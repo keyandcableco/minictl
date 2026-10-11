@@ -351,7 +351,15 @@ def flash_hazards():
         out.append(f"kernel {k} (6.1.187) hangs USB when a MIDI device drops off; boot 6.1.0-50 first")
     busy = subprocess.run(["pgrep", "-f", "teensy_post_compile|teensy_loader_cli|pio run -t upload|pio run --target upload"],
                           capture_output=True, text=True).stdout.split()
-    busy = [p for p in busy if int(p) != os.getpid()]
+    mine, pid = set(), os.getpid()            # minictl and the shells that started it, whose command
+    while pid > 1 and pid not in mine:         # lines can mention the same words
+        mine.add(pid)
+        try:
+            with open(f"/proc/{pid}/stat") as f:
+                pid = int(f.read().rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+    busy = [p for p in busy if int(p) not in mine]
     if busy:
         out.append(f"another upload is running (pids {', '.join(busy)})")
     d = subprocess.run("ps -eLo stat,wchan:40 | awk '$1 ~ /D/' | grep -c snd_use_lock", shell=True,
