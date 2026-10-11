@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "minichord"
+version = "0.1.0"
+description = "minictl: the minichord from the command line. Settings by name, banks, backups, presets from words, instructions, notes and flashing, for stock and fork firmware"
+readme = "README.md"
+license = {text = "BSD-3-Clause"}
+requires-python = ">=3.9"
+dependencies = ["python-rtmidi>=1.5"]
+keywords = ["minichord", "omnichord", "midi", "sysex", "synthesizer", "teensy"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Sound/Audio :: MIDI",
+    "Environment :: Console",
+]
+
+[project.optional-dependencies]
+serial = ["pyserial>=3.5"]
+audio = ["sounddevice>=0.4"]
+all = ["pyserial>=3.5", "sounddevice>=0.4"]
+
+[project.urls]
+Homepage = "https://github.com/keyandcableco/minictl"
+minicontrol = "https://minicontrol.keyandcable.com"
+minichord = "https://github.com/BenjaminPoilve/minichord"
+
+[project.scripts]
+minictl = "minictl.cli:main"
+
+[tool.setuptools]
+packages = ["minictl", "minictl.describer"]
+
+[tool.setuptools.package-data]
+minictl = ["data/*.json", "data/fork/*", "data/stock/*"]
+"minictl.describer" = ["songs.json"]
