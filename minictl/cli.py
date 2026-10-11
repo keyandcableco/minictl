@@ -144,7 +144,8 @@ def cmd_info(args):
         v = d.read()
     s = settings()
     info = {"port": d.port_name, "firmware": v[7], "family": s.profile, "bank": v[1] + 1,
-            "name": s.preset_name(v) if s.profile == "fork" else "", "settings": len(s.params),
+            "name": s.preset_name(v) if s.profile == "fork" else "",
+            "settings": sum(1 for a in s.params if s.has(a, v[7])),
             "minictl_knows": s.version}
     if args.json:
         return print_json(info)
@@ -153,7 +154,7 @@ def cmd_info(args):
         print(f"stock firmware {v[7]}, {len(s.params)} settings" +
               (f" (minictl knows stock up to {s.version})" if v[7] > s.version else ""))
     else:
-        print(f"the minichord fork's firmware {v[7]}, {sum(1 for a in s.params if a < len(v))} settings" +
+        print(f"the minichord fork's firmware {v[7]}, {sum(1 for a in s.params if s.has(a, v[7]))} settings" +
               (f" (minictl knows up to {s.version}: settings past that have no name here)" if v[7] > s.version else ""))
     print(f"bank {v[1] + 1}" + (f": {info['name']}" if info["name"] else ""))
 
@@ -187,7 +188,7 @@ def cmd_get(args):
     if args.settings:
         which = [s.find(w) for w in args.settings]
     else:
-        which = [a for a in sorted(s.params) if a < len(values) and s.params[a]["group"] != "hidden"
+        which = [a for a in sorted(s.params) if a < len(values) and s.params[a]["group"] != "hidden" and s.has(a, values[7])
                  and (args.all or values[a] != pm.stored_default(s.params[a]))]
         if args.all:
             which = sorted(s.params)

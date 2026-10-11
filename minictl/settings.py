@@ -103,6 +103,11 @@ class Settings:
     def stock(self):
         return self.profile == "stock"
 
+    def has(self, a, version):
+        """whether a minichord on this firmware version has setting a"""
+        p = self.params.get(a)
+        return p is not None and (self.stock or p.get("introduction_version", 0) <= version)
+
     # ---- naming ----
 
     def title(self, a):
