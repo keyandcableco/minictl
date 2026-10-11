@@ -24,12 +24,17 @@ def write_json(path, data):
         json.dump(data, f)
 
 
+FAKES = []        # the pretend minichords running, to wait for after each command
+
+
 def run(*argv):
     """minictl's output and exit code for these arguments"""
     cli.PROFILE, cli.FORCED = None, False
     out, err = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
         code = cli.main(list(argv))
+    for f in FAKES:
+        f.settle()
     return code, out.getvalue() + err.getvalue()
 
 
@@ -117,16 +122,19 @@ class WithFakeMinichord(unittest.TestCase):
         from fake_minichord import FakeMinichord
         try:
             cls.fake = FakeMinichord()
+            FAKES.append(cls.fake)
         except Exception as e:          # no virtual MIDI here (a CI machine without a sound system)
             raise unittest.SkipTest(f"no virtual MIDI ports: {e}")
         os.environ["MINICTL_PORT"] = "fakechord"
 
     @classmethod
     def tearDownClass(cls):
+        FAKES.remove(cls.fake)
         cls.fake.close()
         os.environ.pop("MINICTL_PORT", None)
 
     def setUp(self):
+        self.fake.settle()
         self.fake.live = list(self.fake.banks[0])
         self.fake.saves.clear()
 
@@ -275,6 +283,7 @@ class WithFakeStockMinichord(unittest.TestCase):
         from fake_minichord import FakeMinichord
         try:
             cls.fake = FakeMinichord(name="fakestock", firmware="stock")
+            FAKES.append(cls.fake)
         except Exception as e:          # no virtual MIDI here (a CI machine without a sound system)
             raise unittest.SkipTest(f"no virtual MIDI ports: {e}")
         os.environ["MINICTL_PORT"] = "fakestock"
@@ -282,10 +291,12 @@ class WithFakeStockMinichord(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        FAKES.remove(cls.fake)
         cls.fake.close()
         os.environ.pop("MINICTL_PORT", None)
 
     def setUp(self):
+        self.fake.settle()
         self.fake.live = list(self.fake.banks[0])
         self.fake.saves.clear()
 

@@ -32,6 +32,7 @@ class FakeMinichord:
         self.pushed = None
         self.rhythm = False
         self.saves, self.notes, self.log = [], [], []
+        self.last = time.monotonic()
         self.lock = threading.Lock()
         self.inp = rtmidi.MidiIn(name=name)
         self.out = rtmidi.MidiOut(name=name)
@@ -47,7 +48,15 @@ class FakeMinichord:
         for p in (self.inp, self.out, self.inp2):
             p.close_port()
 
+    def settle(self, quiet=0.3, most=20):
+        """wait until nothing has come for a moment: a slow machine can still be working through a test's
+        hundreds of messages when the next one starts"""
+        t0 = time.monotonic()
+        while time.monotonic() - self.last < quiet and time.monotonic() - t0 < most:
+            time.sleep(0.05)
+
     def _heard(self, msg, cable):
+        self.last = time.monotonic()
         with self.lock:
             if msg[0] != 0xF0:
                 self.notes.append((cable, msg))
