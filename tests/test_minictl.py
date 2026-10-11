@@ -108,6 +108,25 @@ class Offline(unittest.TestCase):
             self.assertRegex(names[device.pick_port(names, 2)], r"2")
         self.assertIsNone(device.pick_port(["IAC Driver Bus 1"], 1))
 
+    def test_scala(self):
+        from minictl import tuning as T
+        just = "! just.scl\n!\nFive-limit just\n 12\n!\n16/15\n9/8\n6/5\n5/4\n4/3\n45/32\n3/2\n8/5\n5/3\n9/5\n15/8\n2/1\n"
+        name, off = T.parse_scala(just)
+        self.assertEqual(name, "Five-limit just")
+        self.assertAlmostEqual(off[4], -13.686, places=2)          # 5/4 is 13.7 cents flat
+        self.assertEqual(T.stored(off)[363], 863)
+        v = [0] * 512
+        v[237] = 13
+        v.__setitem__(slice(359, 371), [T.stored(off)[a] for a in range(359, 371)])
+        self.assertEqual([round(c, 1) for c in T.parse_scala(T.to_scala("x", v))[1]], [round(c, 1) for c in off])
+        for bad, why in (("x\n 19\n", "19 notes"), ("x\n 12\n100.0\n", "twelfth"),
+                         ("x\n 12\n" + "100.0\n" * 11 + "1100.0\n", "not an octave")):
+            with self.assertRaises(ValueError) as e:
+                T.parse_scala(bad)
+            self.assertIn(why, str(e.exception))
+        with self.assertRaises(ValueError):
+            T.check([0, 120] + [0] * 10)
+
     def test_notes(self):
         self.assertEqual(cli.note_number("C4"), 60)
         self.assertEqual(cli.note_number("Eb3"), 51)
@@ -252,6 +271,25 @@ class WithFakeMinichord(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertEqual(S.decode(out.strip().splitlines()[-1])[14], 24)
 
+    def test_tuning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "q.scl")
+            with open(path, "w") as f:
+                f.write("! q\n!\nquarter-comma meantone\n 12\n!\n" + "".join(
+                    f" {100 * k + c:.3f}\n" for k, c in enumerate([-24, -7, 10, -14, 3, -21, -3, -17, 0, 7, -10], 1)) + " 2/1\n")
+            code, out = run("tuning", path)
+            self.assertEqual(code, 0, out)
+            self.assertEqual(self.fake.live[237], 13)
+            self.assertEqual(self.fake.live[363], 860)          # E, 14 cents flat
+            code, out = run("tuning")
+            self.assertIn("your own", out)
+            self.assertIn("E -14", out)
+            back = os.path.join(tmp, "back.scl")
+            run("tuning", "--export", back)
+            from minictl import tuning as T
+            with open(back) as f:
+                self.assertEqual(round(T.parse_scala(f.read())[1][4]), -14)
+
     def test_name(self):
         run("name", "Night", "drive")
         self.assertEqual(Settings.preset_name(self.fake.live), "Night drive")
@@ -356,7 +394,7 @@ class WithFakeStockMinichord(unittest.TestCase):
         self.assertLessEqual(len(fields), 256)
 
     def test_fork_only_commands_refuse(self):
-        for argv in (["play", "C4"], ["snapshot"], ["rhythm", "on"], ["name", "x"]):
+        for argv in (["play", "C4"], ["snapshot"], ["rhythm", "on"], ["name", "x"], ["tuning", "--equal"]):
             code, out = run(*argv)
             self.assertEqual(code, 1, argv)
             self.assertIn("fork", out)

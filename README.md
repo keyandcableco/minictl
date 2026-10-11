@@ -21,6 +21,10 @@ minictl works with Ben Poilvé's stock firmware and with the [minichord fork](ht
 
 On stock firmware minictl offers stock's 206 settings, in stock's ranges. Words that reach past them still work as far as stock can follow: `describe "choir chords, darker"` makes it darker and says it left the choir out, and a backup from the fork's firmware restores into a stock minichord with what stock keeps. Reading banks (`banks`, `backup`, `restore`, `do` on banks) needs stock 9, which loads a bank by SysEx. Playing notes into it, snapshots, rhythm mode by SysEx and preset names are the fork's. `--firmware stock` or `--firmware fork` (or `MINICTL_FIRMWARE`) chooses when no minichord is plugged in, or to override it.
 
+Stock firmware can't take settings 126 and 127 (oscillator 2's frequency multiplier and oscillator 3's amplitude) over USB: it reads a write to them as a universal SysEx message and drops it ([#169](https://github.com/BenjaminPoilve/minichord/pull/169) fixes this). minictl says so rather than failing silently.
+
+Flashing from stock firmware to the fork's, or back, formats the preset storage, so every bank goes back to its factory preset. `minictl backup` first and `minictl restore` after.
+
 ## Commands
 
 | | |
@@ -41,6 +45,7 @@ On stock firmware minictl offers stock's 206 settings, in stock's ranges. Words 
 | `describe "words"` | a preset from a description, by preset_maker's rules, starting from what's playing (`--base` for something else); `--send` plays it, `--save n` keeps it |
 | `do "words"` | an instruction, as minicontrol's instruction box reads it: `do "turn off hover on banks 2 and 4, raise the reverb"` (below) |
 | `words` | everything `describe` understands |
+| `tuning [file.scl]` | the tuning playing; with a Scala file of twelve notes, makes it your own temperament (fork firmware 67 on; `--keep-a` keeps A where it is, `--export file.scl` writes the tuning playing out) |
 | `conflicts [code]` | settings that undo one another (`--strict` exits 1 when there are any, for scripts) |
 | `play C4 E4 G4` | notes through MIDI in, fork firmware 29 on (`--harp` for the harp's port, `-l` seconds, `--arp` seconds apart) |
 | `panic` | all notes off |

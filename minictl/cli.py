@@ -619,6 +619,47 @@ def cmd_do(args):
             d.close()
 
 
+def cmd_tuning(args):
+    """firmware 67's own temperament from a Scala file, the live tuning shown, or written out as one"""
+    from . import tuning as T
+    with open_device(args) as d:
+        v = d.read()
+        s = settings()
+        name = T.TEMPERAMENT_NAMES[v[237]] if v[237] < len(T.TEMPERAMENT_NAMES) else str(v[237])
+        if args.export:
+            with open(args.export, "w") as f:
+                f.write(T.to_scala(f"minichord {name}", v))
+            print(f"{name} -> {args.export}")
+            return
+        if not args.file and not args.equal:
+            off = T.offsets_of(v)
+            print(f"temperament {v[237]}: {name}" + (f", master tuning {v[109] / 10:g} Hz" if v[109] else ""))
+            if off is None:
+                print(f"  the octave in {T.DIVISIONS[v[237]]} equal steps")
+            else:
+                print("  " + "  ".join(f"{n} {c:+g}" for n, c in zip(T.NAMES, off)) + "  (cents from equal)")
+            return
+        needs_fork("your own temperament", d, T.OWN_VERSION)
+        if args.equal:
+            offsets, what = [0.0] * 12, "equal"
+        else:
+            with open(args.file, encoding="utf-8", errors="replace") as f:
+                title, offsets = T.parse_scala(f.read())
+            if args.keep_a:
+                offsets = [c - offsets[9] for c in offsets]
+            T.check(offsets)
+            what = title or os.path.basename(args.file)
+        changes = T.stored(offsets)
+        if not args.equal:
+            changes[237] = T.OWN_TEMPERAMENT
+        for a, value in changes.items():
+            d.set(a, value)
+        print(f"your own temperament: {what}")
+        print("  " + "  ".join(f"{n} {c:+.1f}" for n, c in zip(T.NAMES, offsets)) + "  (cents from equal)")
+        if not args.equal:
+            print("temperament set to your own (live: `minictl save` keeps it)")
+
+
 def cmd_words(args):
     interpret.print_vocabulary()
 
@@ -821,6 +862,12 @@ def parser():
     p.add_argument("--send", action="store_true", help="play the result on the minichord (live)")
     p.add_argument("--save", type=bank_arg, metavar="BANK", help="play it and save it to a bank (asks)")
     add("words", cmd_words, "every word and phrase describe understands")
+    p = add("tuning", cmd_tuning, "the tuning playing; tuning FILE.scl makes a Scala file your own temperament "
+                                  "(fork firmware 67)")
+    p.add_argument("file", nargs="?", help="a Scala .scl of twelve notes to the octave")
+    p.add_argument("--keep-a", action="store_true", help="shift it so A stays where it is (C stays otherwise)")
+    p.add_argument("--equal", action="store_true", help="your own temperament back to equal")
+    p.add_argument("--export", metavar="FILE", help="write the tuning playing as a .scl")
     p = add("do", cmd_do, "an instruction in words, for the live sound or any banks: "
                           "do \"turn off hover on banks 2 and 4, raise the reverb\"")
     p.add_argument("text", nargs="+")
