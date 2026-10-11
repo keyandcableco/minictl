@@ -2,7 +2,8 @@
 import argparse, datetime, json, os, re, sys, time
 
 from . import device as dev
-from .settings import Settings, BANKS, RHYTHM_FIRST, RHYTHM_LAST, pm, interpret, profile_for, FIRMWARE, STOCK_VERSION
+from .settings import (Settings, BANKS, RHYTHM_FIRST, RHYTHM_LAST, pm, interpret, profile_for, FIRMWARE,
+                       STOCK_VERSION, STOCK_UNWRITABLE)
 
 S = {}            # Settings by firmware, loaded once each
 PROFILE = None    # "stock" or "fork": from --firmware or MINICTL_FIRMWARE, or else the minichord says
@@ -186,7 +187,16 @@ def cmd_get(args):
             values = d.read()
     s = settings()
     if args.settings:
-        which = [s.find(w) for w in args.settings]
+        which, missing = [], []
+        for w in args.settings:
+            try:
+                which.append(s.find(w))
+            except ValueError as e:
+                missing.append(str(e))
+        if not which:
+            raise ValueError("; ".join(missing))
+        for m in missing:
+            print(f"! {m}", file=sys.stderr)
     else:
         which = [a for a in sorted(s.params) if a < len(values) and s.params[a]["group"] != "hidden" and s.has(a, values[7])
                  and (args.all or values[a] != pm.stored_default(s.params[a]))]
@@ -215,6 +225,8 @@ def cmd_set(args):
         changes, raw = [], []
         for name, text in zip(args.pairs[::2], args.pairs[1::2]):
             a = s.find(name)
+            if s.writable(a):
+                raise RuntimeError(s.writable(a))
             if args.raw:
                 raw.append((a, int(text)))
             else:
@@ -381,7 +393,7 @@ def cmd_restore(args):
             for e in entries:
                 got = d.load_bank(e["bank"])
                 want = s.clamp(e["values"]) if s.stock else e["values"]
-                diff = [a for a, v in enumerate(want) if a not in (0, 1, 7) and a not in dev.RESERVED
+                diff = [a for a, v in enumerate(want) if a not in (0, 1, 7) and a not in dev.RESERVED and not s.writable(a)
                         and v is not None and a < len(got) and got[a] != v and not (a == 109 and not v)
                         and not (290 <= a < 302 and not v)]
                 if diff:
@@ -389,6 +401,9 @@ def cmd_restore(args):
                     print(f"bank {e['bank'] + 1}: {len(diff)} settings differ from the file, first "
                           + ", ".join(s.names.get(a, str(a)) for a in diff[:6]))
             print("every bank matches the file" if not bad else f"{bad} banks differ")
+            if s.stock:
+                print(f"(not checked: {', '.join(s.names.get(a, str(a)) for a in sorted(STOCK_UNWRITABLE))}, which stock "
+                      f"firmware can't take over USB)")
         finally:
             d.load_bank(start)
 
@@ -443,6 +458,7 @@ def cmd_describe(args):
         after, _, notes = pm.apply_changes(values, result.changes, s.fork)
         after, fitted = s.fit(values, after)
         notes += fitted
+        values[7] = after[7] = s.version
         made = [(a, values[a], after[a]) for a in range(len(after)) if after[a] != values[a] and a != 7]
         if args.json:
             return print_json({"base": base_name, "understood": result.understood, "unknown": result.unknown,

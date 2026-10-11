@@ -31,6 +31,9 @@ BANKS = 12
 NAME_FIRST, NAME_SLOTS = 290, 12
 RHYTHM_FIRST, RHYTHM_LAST = 220, 235
 TARGETS = set(pm.KNOB_TARGETS) | set(pm.TAP_TARGETS)
+# Stock firmware drops a write whose address's low byte is 0x7E or 0x7F, taking it for a universal
+# SysEx message, so these can't be set over USB there (the fork tells them apart, fbb887f)
+STOCK_UNWRITABLE = {126, 127, 254, 255}
 
 # Names for the controls, shorter than parameters.json's (the generated name stays an alias)
 RENAMES = {10: "chord-knob-alt", 11: "chord-knob-alt-range", 12: "harp-knob-alt", 13: "harp-knob-alt-range",
@@ -123,6 +126,13 @@ class Settings:
             raise ValueError(f"{self.names[a]} is the minichord fork's; stock firmware {STOCK_VERSION} doesn't have it")
         return a
 
+    def writable(self, a):
+        """why setting a can't be written over USB on this firmware, or None"""
+        if self.stock and a in STOCK_UNWRITABLE:
+            return (f"stock firmware can't take {self.names.get(a, a)} over USB: it reads a write to {a} as a "
+                    f"universal SysEx message and drops it (the fork fixed this)")
+        return None
+
     def _find(self, word):
         w = word.strip()
         if re.fullmatch(r"\d+", w):
@@ -205,7 +215,8 @@ class Settings:
         if t.lower() in ("off", "no", "false"):
             return 0
         try:
-            return float(t)
+            v = float(t)
+            return int(v) if v.is_integer() else v
         except ValueError:
             raise ValueError(f"{t!r} isn't a value for {self.names.get(a, a)}")
 
@@ -239,7 +250,7 @@ class Settings:
             if after[a] == before[a]:
                 continue
             p = self.params.get(a)
-            if p is None:
+            if p is None or a in STOCK_UNWRITABLE:
                 if a in self.fork and self.fork[a]["group"] != "hidden":
                     left.append(self.names[a])
                 out[a] = before[a]
@@ -254,7 +265,8 @@ class Settings:
                 out[a] = max(lo, min(hi, after[a]))
                 notes.append(f"{self.names[a]} goes to {self.shown(a, out[a])} at most on stock firmware")
         if left:
-            notes.insert(0, f"left out, as stock firmware {STOCK_VERSION} doesn't have them: " + ", ".join(left))
+            notes.insert(0, f"left out, as stock firmware {STOCK_VERSION} doesn't have them or can't take them "
+                            f"over USB: " + ", ".join(left))
         return out, notes
 
     def clamp(self, values):

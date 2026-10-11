@@ -316,6 +316,13 @@ class WithFakeStockMinichord(unittest.TestCase):
         code, out = run("set", "chord-alternate-layout-alt-layout-maj", "25")   # the fork goes to 29, stock to 18
         self.assertEqual(self.fake.live[202], 18)
 
+    def test_stock_cannot_take_126_and_127(self):
+        code, out = run("set", "chord-amplitude-3", "0.4")
+        self.assertEqual(code, 1)
+        self.assertIn("universal SysEx", out)
+        code, out = run("--yes", "do", "set chord amplitude 3 to 0.4")
+        self.assertIn("left out", out)
+
     def test_list_is_stock_only(self):
         code, out = run("--firmware", "stock", "--json", "list")
         addrs = {x["address"] for x in json.loads(out)}

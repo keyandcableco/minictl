@@ -64,6 +64,8 @@ class FakeMinichord:
             body = msg[1:-1]
             if len(body) != 4:
                 return
+            if self.firmware == "stock" and body[0] in (0x7E, 0x7F):
+                return                        # stock takes these for universal SysEx and drops them
             address, value = body[0] + 128 * body[1], body[2] + 128 * body[3]
             self.log.append((address, value))
             if address == 0:
