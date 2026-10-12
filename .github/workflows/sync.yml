@@ -1,0 +1,88 @@
+name: sync
+
+# Keeps what minictl carries from elsewhere (see sync.py) up to date by itself: the describer and the
+# fork's settings from keyandcableco/minichord's test-allFeatures, the stock firmware's from Ben's main,
+# and the dropdown names from minicontrol. Every three hours, on the button in the Actions tab, and at
+# once when the fork's push workflow (minictl-sync.yml there) sends a "firmware-changed" dispatch.
+# What changed is committed only if the tests and the parity check with minicontrol pass; otherwise an
+# issue says what failed and nothing is committed, so minictl never ships a describer that breaks.
+on:
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
+  repository_dispatch:
+    types: [firmware-changed]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: keyandcableco/minichord
+          ref: test-allFeatures
+          path: fork
+          sparse-checkout: firmware
+      - name: Ben's stock firmware, as upstream/main in the fork's checkout
+        run: git -C fork fetch --depth=1 https://github.com/BenjaminPoilve/minichord.git main:refs/remotes/upstream/main
+      - uses: actions/checkout@v4
+        with:
+          repository: keyandcableco/minicontrol
+          path: minicontrol
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: sync.py
+        run: python sync.py --fork fork --stock upstream/main --minicontrol minicontrol
+      - name: anything new?
+        id: changed
+        run: |
+          if [ -n "$(git status --porcelain -- minictl)" ]; then echo "changed=yes" >> "$GITHUB_OUTPUT"; git status --short -- minictl; else echo "nothing new"; fi
+      - name: tests
+        id: tests
+        if: steps.changed.outputs.changed == 'yes'
+        run: |
+          pip install .
+          minictl list reverb > /dev/null
+          python tests/test_minictl.py
+          python tests/parity_test.py minicontrol
+      - name: commit
+        if: steps.changed.outputs.changed == 'yes' && steps.tests.outcome == 'success'
+        run: |
+          read -r fork_version fork_commit < <(python -c "import json; d = json.load(open('minictl/data/firmware.json'))['fork']; print(d['version'], d['commit'])")
+          git config user.name "minictl sync"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add minictl
+          git commit -m "Synced from the fork at ${fork_commit} (firmware ${fork_version})" \
+                     -m "By the sync workflow: sync.py, then the tests and the parity check with minicontrol, all passed."
+          git push
+      - name: say what failed
+        if: failure() && steps.changed.outputs.changed == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="The automatic sync failed its tests"
+          body="sync.py brought in changes from the fork, minicontrol or the stock firmware, and the tests or the parity check with minicontrol failed, so nothing was committed. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Usually the fork's describer and minicontrol were pushed out of step; push the other and run the sync again (Actions tab, sync, Run workflow). This issue is left open until a sync passes."
+          n=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$n" ]; then gh issue comment "$n" --body "Failed again: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"; else gh issue create --title "$title" --body "$body"; fi
+      - name: close the failure issue once a sync passes
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="The automatic sync failed its tests"
+          for n in $(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "A sync passed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          done
