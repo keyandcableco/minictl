@@ -961,5 +961,9 @@
   "1": "A bol a beat (the tempo counts matras)",
   "2": "Two bols a beat (dugun)",
   "3": "Four bols a beat (chaugun)"
+ },
+ "384": {
+  "0": "The right way up",
+  "1": "Upside down, for the left hand"
  }
 }
