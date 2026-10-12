@@ -51,6 +51,7 @@ Flashing from stock firmware to the fork's, or back, formats the preset storage,
 | `panic` | all notes off |
 | `rhythm on/off/toggle` | rhythm mode (fork) |
 | `snapshot`, `revert` | remember the live settings, and go back to them (fork) |
+| `locks` | the settings the minichord keeps as its own, whatever preset is loaded: `--lock master-tuning`, `--unlock`, `--defaults`, `--none` (fork firmware 76). `restore`, `code` and `do` leave locked settings alone |
 | `monitor` | what the minichord sends: its MIDI and its serial log (`--midi`, `--serial`) |
 | `record file.wav` | its USB audio (`-s` seconds) |
 | `flash file.hex` | put a firmware on it, through PJRC's loader |

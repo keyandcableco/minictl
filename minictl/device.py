@@ -6,13 +6,18 @@ USB audio and its flashing, on Linux, macOS and Windows. The protocol is minicon
 
 Commands: 0 report page 0 (512 bytes, no header), 7 report page <parameter> (7D 6D <page> first),
 1 wipe memory, 2 save to bank, 3 reset a bank to its factory preset, 4 load a bank (it reports itself),
-5 push the live settings, 6 pop them back, 8 rhythm mode (0 off, 1 on, 2 the other way)."""
+5 push the live settings, 6 pop them back, 8 rhythm mode (0 off, 1 on, 2 the other way), 9 report the
+locks (7D 6C, a count, then two bytes an address; firmware 76), 10 unlock everything (0) or lock the
+default settings again (1)."""
 import glob, os, re, subprocess, sys, threading, time
 
 PAGE = 256
 PAGE1_VERSION = 31         # firmware 31 grew the settings to two pages
 RESERVED = {382, 383, 510, 511}
 VERSION_ADDRESS = 7
+LOCKS_VERSION = 76         # firmware 76 keeps locks: settings that are the instrument's, whatever preset loads
+LOCK_ADDRESS = 385         # writing an address locks it, 1024 + the address unlocks it
+INSTRUMENT = {244, 384}    # USB audio and upside down: the instrument's own, left alone by a whole preset
 PJRC_VID = 0x16C0
 
 
@@ -97,6 +102,7 @@ class Minichord:
         self.version = None
         self.bank = None
         self.page1 = None          # whether it keeps a second page of settings, once read
+        self.locks = None          # the locked addresses, once asked for (firmware 76 on)
         self.sent = False
 
     def close(self):
@@ -213,19 +219,61 @@ class Minichord:
         self.command(4, bank)
         return self.read(timeout, bank=bank)
 
+    def read_locks(self, timeout=1.5):
+        """The locked addresses (firmware 76 on): settings the minichord keeps as its own, whatever preset
+        is loaded. Command 9 answers 7D 6C, a count, then two bytes an address, the instrument's two
+        (USB audio, upside down) first. Older firmware: none."""
+        if self.version is None or self.version < LOCKS_VERSION:
+            self.locks = set()
+            return self.locks
+        with self.lock:
+            self.sysex.clear()
+
+        def want(body):
+            if len(body) >= 3 and body[0] == 0x7D and body[1] == 0x6C:
+                return {body[3 + 2 * i] + 128 * body[4 + 2 * i] for i in range(body[2]) if 4 + 2 * i < len(body)}
+            return None
+
+        r = self._take(want, timeout, [(0.0, lambda: self.command(9)), (0.6, lambda: self.command(9))])
+        if r is None:
+            raise RuntimeError("the minichord didn't answer for its locks")
+        self.locks = r
+        return r
+
+    def leaves_alone(self, a):
+        """what a whole preset sent leaves as it is: the instrument's own settings, and its locks"""
+        return a in INSTRUMENT or (self.locks is not None and a in self.locks)
+
+    def set_lock(self, a, on):
+        """lock a setting at its present value, or unlock it; the locks as they are after"""
+        self.set(LOCK_ADDRESS, a if on else 1024 + a)
+        time.sleep(0.1)
+        return self.read_locks()
+
+    def reset_locks(self, defaults):
+        """unlock everything, or lock the default settings again; the locks as they are after"""
+        with self.lock:
+            self.sysex.clear()
+        self.command(10, 1 if defaults else 0)
+        time.sleep(0.1)
+        return self.read_locks()
+
     def apply(self, values, page1_defaults=None):
         """Sends a whole preset to the live settings, as minicontrol's load does; nothing is saved. A
-        page-0 preset gets page 1's defaults rather than keeping what the last preset had there."""
+        page-0 preset gets page 1's defaults rather than keeping what the last preset had there. The
+        instrument's own settings and its locks are left as they are, as minicontrol leaves them."""
+        if self.locks is None:
+            self.read_locks()
         n = min(len(values), 2 * PAGE if self.has_page1 else PAGE)
         for a in range(2, n):
-            if a == VERSION_ADDRESS or a in RESERVED or values[a] is None:
+            if a == VERSION_ADDRESS or a in RESERVED or values[a] is None or self.leaves_alone(a):
                 continue
             self.set(a, values[a])
             if a % 32 == 0:
                 time.sleep(0.002)
         if len(values) <= PAGE and self.has_page1 and page1_defaults:
             for a, v in page1_defaults.items():
-                if a not in RESERVED:
+                if a not in RESERVED and not self.leaves_alone(a):
                     self.set(a, v)
         time.sleep(0.02)
 

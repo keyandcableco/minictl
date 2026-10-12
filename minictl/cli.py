@@ -394,13 +394,16 @@ def cmd_restore(args):
                 got = d.load_bank(e["bank"])
                 want = s.clamp(e["values"]) if s.stock else e["values"]
                 diff = [a for a, v in enumerate(want) if a not in (0, 1, 7) and a not in dev.RESERVED and not s.writable(a)
-                        and v is not None and a < len(got) and got[a] != v and not (a == 109 and not v)
-                        and not (290 <= a < 302 and not v)]
+                        and not d.leaves_alone(a) and v is not None and a < len(got) and got[a] != v
+                        and not (a == 109 and not v) and not (290 <= a < 302 and not v)]
                 if diff:
                     bad += 1
                     print(f"bank {e['bank'] + 1}: {len(diff)} settings differ from the file, first "
                           + ", ".join(s.names.get(a, str(a)) for a in diff[:6]))
             print("every bank matches the file" if not bad else f"{bad} banks differ")
+            left = sorted(a for a in (d.locks or set()) if a not in dev.INSTRUMENT)
+            if left:
+                print(f"(left as the minichord's own, being locked: {', '.join(s.names.get(a, str(a)) for a in left)})")
             if s.stock:
                 print(f"(not checked: {', '.join(s.names.get(a, str(a)) for a in sorted(STOCK_UNWRITABLE))}, which stock "
                       f"firmware can't take over USB)")
@@ -723,6 +726,35 @@ def cmd_revert(args):
     print("back to the snapshot (if there was one)")
 
 
+def cmd_locks(args):
+    with open_device(args) as d:
+        needs_fork("the locks", d, dev.LOCKS_VERSION)
+        s = settings()
+        if args.defaults:
+            locks = d.reset_locks(True)
+        elif args.none:
+            locks = d.reset_locks(False)
+        else:
+            locks = d.read_locks()
+            for word in args.lock:
+                a = s.find(word)
+                locks = d.set_lock(a, True)
+                if a not in locks:
+                    print(f"{s.names.get(a, a)} can't be locked" + (": it is the instrument's own already" if a in dev.INSTRUMENT else
+                          ": an action, a name or a control's own storage"))
+            for word in args.unlock:
+                a = s.find(word)
+                locks = d.set_lock(a, False)
+                if a in locks:
+                    print(f"{s.names.get(a, a)} stays locked: it is the instrument's own always")
+    if getattr(args, "json", False):
+        print_json(sorted(locks))
+        return
+    print("locked, the minichord's own whatever preset is loaded:" if locks else "nothing is locked")
+    for a in sorted(locks):
+        print(f"  {a:3}  {s.title(a)}" + ("  (always)" if a in dev.INSTRUMENT else ""))
+
+
 def cmd_monitor(args):
     show_midi = args.midi or not args.serial
     show_serial = args.serial or not args.midi
@@ -890,6 +922,11 @@ def parser():
     p.add_argument("state", choices=["on", "off", "toggle"])
     add("snapshot", cmd_snapshot, "remember the live settings, to revert to")
     add("revert", cmd_revert, "back to the snapshot")
+    p = add("locks", cmd_locks, "the settings the minichord keeps as its own, whatever preset is loaded (fork firmware 76)")
+    p.add_argument("--lock", action="append", default=[], metavar="SETTING", help="lock a setting, at its present value")
+    p.add_argument("--unlock", action="append", default=[], metavar="SETTING", help="unlock a setting, so presets set it again")
+    p.add_argument("--defaults", action="store_true", help="lock the default ones again (the harp plate, the touch thresholds, the master tuning), nothing else")
+    p.add_argument("--none", action="store_true", help="unlock everything")
     p = add("monitor", cmd_monitor, "print what the minichord sends: MIDI and its serial log")
     p.add_argument("--midi", action="store_true", help="MIDI only")
     p.add_argument("--serial", action="store_true", help="serial only")
