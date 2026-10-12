@@ -599,7 +599,11 @@
   "2": "Pizzicato strings",
   "3": "Choir",
   "4": "String quartet",
-  "5": "The song: a second grabbed from the phone"
+  "5": "The song: a second grabbed from the phone",
+  "6": "Vibraphone",
+  "7": "Fingered bass",
+  "8": "Sitar",
+  "9": "Electric piano"
  },
  "265": {
   "0": "Synth",
@@ -607,7 +611,11 @@
   "2": "Pizzicato strings",
   "3": "Choir",
   "4": "String quartet",
-  "5": "The song: a second grabbed from the phone"
+  "5": "The song: a second grabbed from the phone",
+  "6": "Vibraphone",
+  "7": "Fingered bass",
+  "8": "Sitar",
+  "9": "Electric piano"
  },
  "266": {
   "0": "Off",
@@ -621,7 +629,12 @@
   "2": "Piano",
   "3": "Pizzicato strings",
   "4": "Choir",
-  "5": "String quartet"
+  "5": "String quartet",
+  "6": "The song: a second grabbed from the phone",
+  "7": "Vibraphone",
+  "8": "Fingered bass",
+  "9": "Sitar",
+  "10": "Electric piano"
  },
  "271": {
   "0": "As the chord voice",
@@ -629,7 +642,12 @@
   "2": "Piano",
   "3": "Pizzicato strings",
   "4": "Choir",
-  "5": "String quartet"
+  "5": "String quartet",
+  "6": "The song: a second grabbed from the phone",
+  "7": "Vibraphone",
+  "8": "Fingered bass",
+  "9": "Sitar",
+  "10": "Electric piano"
  },
  "272": {
   "0": "As the chord voice",
@@ -637,7 +655,12 @@
   "2": "Piano",
   "3": "Pizzicato strings",
   "4": "Choir",
-  "5": "String quartet"
+  "5": "String quartet",
+  "6": "The song: a second grabbed from the phone",
+  "7": "Vibraphone",
+  "8": "Fingered bass",
+  "9": "Sitar",
+  "10": "Electric piano"
  },
  "273": {
   "0": "As the chord voice",
@@ -645,7 +668,12 @@
   "2": "Piano",
   "3": "Pizzicato strings",
   "4": "Choir",
-  "5": "String quartet"
+  "5": "String quartet",
+  "6": "The song: a second grabbed from the phone",
+  "7": "Vibraphone",
+  "8": "Fingered bass",
+  "9": "Sitar",
+  "10": "Electric piano"
  },
  "274": {
   "0": "Pattern: the steps below, as always",
