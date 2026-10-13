@@ -603,7 +603,13 @@
   "6": "Vibraphone",
   "7": "Fingered bass",
   "8": "Sitar",
-  "9": "Electric piano"
+  "9": "Electric piano",
+  "10": "Reed piano (Wurlitzer)",
+  "11": "Kalimba",
+  "12": "Marimba",
+  "13": "Organ (tonewheel)",
+  "14": "Upright bass",
+  "15": "Accordion"
  },
  "265": {
   "0": "Synth",
@@ -615,7 +621,13 @@
   "6": "Vibraphone",
   "7": "Fingered bass",
   "8": "Sitar",
-  "9": "Electric piano"
+  "9": "Electric piano",
+  "10": "Reed piano (Wurlitzer)",
+  "11": "Kalimba",
+  "12": "Marimba",
+  "13": "Organ (tonewheel)",
+  "14": "Upright bass",
+  "15": "Accordion"
  },
  "266": {
   "0": "Off",
@@ -634,7 +646,13 @@
   "7": "Vibraphone",
   "8": "Fingered bass",
   "9": "Sitar",
-  "10": "Electric piano"
+  "10": "Electric piano",
+  "11": "Reed piano (Wurlitzer)",
+  "12": "Kalimba",
+  "13": "Marimba",
+  "14": "Organ (tonewheel)",
+  "15": "Upright bass",
+  "16": "Accordion"
  },
  "271": {
   "0": "As the chord voice",
@@ -647,7 +665,13 @@
   "7": "Vibraphone",
   "8": "Fingered bass",
   "9": "Sitar",
-  "10": "Electric piano"
+  "10": "Electric piano",
+  "11": "Reed piano (Wurlitzer)",
+  "12": "Kalimba",
+  "13": "Marimba",
+  "14": "Organ (tonewheel)",
+  "15": "Upright bass",
+  "16": "Accordion"
  },
  "272": {
   "0": "As the chord voice",
@@ -660,7 +684,13 @@
   "7": "Vibraphone",
   "8": "Fingered bass",
   "9": "Sitar",
-  "10": "Electric piano"
+  "10": "Electric piano",
+  "11": "Reed piano (Wurlitzer)",
+  "12": "Kalimba",
+  "13": "Marimba",
+  "14": "Organ (tonewheel)",
+  "15": "Upright bass",
+  "16": "Accordion"
  },
  "273": {
   "0": "As the chord voice",
@@ -673,7 +703,13 @@
   "7": "Vibraphone",
   "8": "Fingered bass",
   "9": "Sitar",
-  "10": "Electric piano"
+  "10": "Electric piano",
+  "11": "Reed piano (Wurlitzer)",
+  "12": "Kalimba",
+  "13": "Marimba",
+  "14": "Organ (tonewheel)",
+  "15": "Upright bass",
+  "16": "Accordion"
  },
  "274": {
   "0": "Pattern: the steps below, as always",
@@ -965,5 +1001,21 @@
  "384": {
   "0": "The right way up",
   "1": "Upside down, for the left hand"
+ },
+ "388": {
+  "0": "888000000 jazz and blues",
+  "1": "888800000 rock",
+  "2": "838000000 jazz ballad",
+  "3": "008000000 flute",
+  "4": "688600000 gospel and soul",
+  "5": "800000888 hollow, shrill",
+  "6": "008080800 reedy",
+  "7": "888888888 full organ"
+ },
+ "389": {
+  "0": "None",
+  "1": "Second harmonic, fast",
+  "2": "Third harmonic, fast",
+  "3": "Third harmonic, slow"
  }
 }

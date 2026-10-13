@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: keyandcableco/minichord
-          ref: test-allFeatures
+          ref: experimental-locks   # the fork's newest branch (the locks, firmware 76 on); test-allFeatures is behind it
           path: fork
           sparse-checkout: firmware
       - name: Ben's stock firmware, as upstream/main in the fork's checkout
@@ -49,6 +49,10 @@ jobs:
       - name: anything new?
         id: changed
         run: |
+          # never back to an older firmware: a sync by hand from a newer branch stays
+          was=$(git show HEAD:minictl/data/firmware.json | python -c "import json,sys; print(json.load(sys.stdin)['fork']['version'])")
+          now=$(python -c "import json; print(json.load(open('minictl/data/firmware.json'))['fork']['version'])")
+          if [ "$now" -lt "$was" ]; then echo "the branch synced from has firmware $now, minictl already carries $was: nothing done"; git checkout -- minictl; exit 0; fi
           if [ -n "$(git status --porcelain -- minictl)" ]; then echo "changed=yes" >> "$GITHUB_OUTPUT"; git status --short -- minictl; else echo "nothing new"; fi
       - name: tests
         id: tests
