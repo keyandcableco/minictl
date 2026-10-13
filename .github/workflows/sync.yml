@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: keyandcableco/minichord
-          ref: experimental-locks   # the fork's newest branch (the locks, firmware 76 on); test-allFeatures is behind it
+          ref: test-allFeatures
           path: fork
           sparse-checkout: firmware
       - name: Ben's stock firmware, as upstream/main in the fork's checkout
