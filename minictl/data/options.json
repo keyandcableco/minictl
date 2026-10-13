@@ -1048,5 +1048,11 @@
   "17": "9/8 as 2+2+2+3",
   "18": "11/8 as 2+2+3+2+2",
   "19": "8/8 as 3+3+2"
+ },
+ "394": {
+  "0": "Leaves the block as it is",
+  "1": "Climbs the drops, then starts over",
+  "2": "Climbs the drops and comes back down",
+  "3": "Close and drop 2 in turn"
  }
 }
