@@ -897,7 +897,11 @@
   "40": "saidi",
   "41": "kehrwa",
   "42": "dadra",
-  "43": "teental"
+  "43": "teental",
+  "44": "cliqhop",
+  "45": "clicks and cuts",
+  "46": "idm",
+  "47": "microsound"
  },
  "336": {
   "0": "As style A has it",
@@ -943,7 +947,11 @@
   "40": "saidi",
   "41": "kehrwa",
   "42": "dadra",
-  "43": "teental"
+  "43": "teental",
+  "44": "cliqhop",
+  "45": "clicks and cuts",
+  "46": "idm",
+  "47": "microsound"
  },
  "337": {
   "0": "The groove's own",
@@ -957,7 +965,8 @@
   "8": "tabla and doumbek",
   "9": "trap",
   "10": "house",
-  "11": "glitch"
+  "11": "glitch",
+  "12": "cliqhop"
  },
  "340": {
   "0": "Off",
