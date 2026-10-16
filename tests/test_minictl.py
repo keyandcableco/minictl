@@ -224,6 +224,27 @@ class WithFakeMinichord(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("don't make sense", out)
 
+    def test_locks(self):
+        default = {a for a, p in S.params.items() if p.get("lock") in ("default", "fixed")}
+        code, out = run("--json", "locks")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(set(json.loads(out)), default)
+        stored = self.fake.banks[2][24]
+        try:
+            code, out = run("--json", "locks", "--lock", "reverb-size", "--unlock", "harp-plate")
+            self.assertEqual(code, 0, out)
+            self.assertEqual(set(json.loads(out)), (default - {243}) | {24})
+            held = self.fake.live[24]
+            self.fake.banks[2][24] = held + 10
+            self.fake.command(4, 2)                      # a preset load leaves a locked setting as the instrument has it
+            self.assertEqual(self.fake.live[24], held)
+            code, out = run("--json", "locks", "--none")
+            self.assertEqual(set(json.loads(out)), {244, 384})
+        finally:
+            self.fake.banks[2][24] = stored
+            code, out = run("--json", "locks", "--defaults")
+        self.assertEqual(set(json.loads(out)), default)
+
     def test_code_both_ways(self):
         code, out = run("code", "Raver")
         self.assertEqual(code, 0, out)

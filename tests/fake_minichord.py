@@ -10,6 +10,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from minictl.settings import Settings, BANKS, pm   # noqa: E402
 
 PAGE = 256
+LOCKS_VERSION = 76            # the locks (LOCKS in src/main.cpp): command 9 reports them, 10 resets them, 385 sets one
+LOCK_ADDRESS = 385
+FIXED = (244, 384)            # USB audio and upside down: the instrument's by their own code, reported first
 
 
 class FakeMinichord:
@@ -29,6 +32,10 @@ class FakeMinichord:
                 Settings.set_preset_name(v, f"Bank {b + 1}")
             self.banks.append(v)
         self.live = list(self.banks[0])
+        self.lock_kinds = {a: p.get("lock") for a, p in s.params.items()}
+        self.locks = {}               # address: the instrument's value
+        if self.has_locks():
+            self.lock_defaults()      # the first boot locks the default ones at the first preset's values
         self.pushed = None
         self.rhythm = False
         self.saves, self.notes, self.log = [], [], []
@@ -75,7 +82,50 @@ class FakeMinichord:
             elif address < len(self.live) and (self.firmware == "stock" or (address not in (1, 7) and address not in pm.RESERVED)):
                 if address >= PAGE and self.version < 31:
                     return
+                if address == LOCK_ADDRESS and self.has_locks():
+                    self.lock_action(value)
+                    return
                 self.live[address] = value
+                if address in self.locks:
+                    self.locks[address] = value   # a locked setting changed live is the instrument's new value
+
+    def has_locks(self):
+        return self.firmware == "fork" and self.version >= LOCKS_VERSION
+
+    def lockable(self, a):
+        return 0 < a < len(self.live) and self.lock_kinds.get(a, "never") not in ("never", "fixed")
+
+    def lock_defaults(self):
+        for a in sorted(self.lock_kinds):
+            if self.lock_kinds[a] == "default" and a not in self.locks:
+                self.locks[a] = self.live[a]
+
+    def lock_action(self, value):
+        """lock (385): an address locks it at its present value, 1024 + an address unlocks it"""
+        self.live[LOCK_ADDRESS] = 0           # an action, never a value to keep
+        a = value if value < 1024 else value - 1024
+        if value <= 0 or not self.lockable(a):
+            return
+        if value < 1024:
+            self.locks.setdefault(a, self.live[a])
+        else:
+            self.locks.pop(a, None)
+
+    def report_locks(self):
+        """command 9: 7D 6C, a count, then two bytes an address, the fixed ones first"""
+        addresses = list(FIXED) + list(self.locks)
+        data = [b for a in addresses for b in (a % 128, a // 128)]
+        self.out.send_message([0xF0, 0x7D, 0x6C, len(addresses)] + data + [0xF7])
+
+    def load(self, values):
+        """a preset load: the instrument's own settings and the locked ones stay as the instrument has them"""
+        before = self.live
+        self.live = list(values)
+        if self.has_locks():
+            for a in FIXED:
+                self.live[a] = before[a]
+            for a, v in self.locks.items():
+                self.live[a] = v
 
     def report(self, page):
         vals = self.live[page * PAGE:(page + 1) * PAGE]
@@ -95,9 +145,9 @@ class FakeMinichord:
         elif cmd == 3:
             self.banks[param] = list(self.defaults)
             self.banks[param][1] = param
-            self.live = list(self.banks[param])
+            self.load(self.banks[param])
         elif cmd == 4 and param < BANKS:
-            self.live = list(self.banks[param])
+            self.load(self.banks[param])
             self.live[1] = param
             self.pushed = None
             self.report(0)
@@ -110,6 +160,13 @@ class FakeMinichord:
             self.report(0)
         elif cmd == 8:
             self.rhythm = (not self.rhythm) if param == 2 else param == 1
+        elif cmd == 9 and self.has_locks():
+            self.report_locks()
+        elif cmd == 10 and self.has_locks():
+            self.locks = {}
+            if param == 1:
+                self.lock_defaults()
+            self.report_locks()
 
 
 if __name__ == "__main__":
