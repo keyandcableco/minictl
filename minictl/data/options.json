@@ -573,7 +573,8 @@
   "1": "Keymaster",
   "2": "Piano plate",
   "3": "Twin rows",
-  "4": "Framed strings"
+  "4": "Framed strings",
+  "13": "Drum pads"
  },
  "244": {
   "0": "Stock: offered as a speaker, not played",
@@ -902,7 +903,8 @@
   "44": "cliqhop",
   "45": "clicks and cuts",
   "46": "idm",
-  "47": "microsound"
+  "47": "microsound",
+  "48": "kendang"
  },
  "336": {
   "0": "As style A has it",
@@ -952,7 +954,8 @@
   "44": "cliqhop",
   "45": "clicks and cuts",
   "46": "idm",
-  "47": "microsound"
+  "47": "microsound",
+  "48": "kendang"
  },
  "337": {
   "0": "The groove's own",
