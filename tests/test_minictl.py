@@ -261,6 +261,27 @@ client 141: 'Chrome' [type=user,pid=777]
         self.assertEqual(device.alsa_peers(listing, {28}, 4242), [(140, "Chrome", 777), (141, "Chrome", 777)])
         self.assertEqual([c for c, _, _ in device.alsa_peers(listing, {28})], [128, 129, 140, 141])
         self.assertEqual(device.alsa_peers(listing, {99}, 4242), [])
+        # Chrome's Web MIDI clients can't be subscribed to, so `aconnect -l` lists only their connections:
+        # their names come from the kernel's own list, and the guard knows them for a browser
+        hidden = """client 28: 'minichord' [type=kernel,card=3]
+    0 'minichord MIDI 1'
+\tConnecting To: 128:0
+\tConnected From: 129:1
+"""
+        with tempfile.NamedTemporaryFile("w", suffix="clients", delete=False) as f:
+            f.write('Client info\n  cur  clients : 5\nClient  28 : "minichord" [Kernel]\n  Port   0 : "minichord MIDI 1" (RWeX)\n'
+                    'Client 128 : "Chrome (input)" [User]\n  Port   0 : "port-0" (-w--)\n'
+                    'Client 129 : "Chrome (output)" [User]\n  Port   1 : "port-1" (r---)\n')
+        try:
+            known = device.seq_client_names(f.name)
+        finally:
+            os.unlink(f.name)
+        self.assertEqual(known, {28: "minichord", 128: "Chrome (input)", 129: "Chrome (output)"})
+        self.assertEqual(device.alsa_peers(hidden, {28}), [(128, "?", None), (129, "?", None)])
+        peers = device.alsa_peers(hidden, {28}, 4242, known)
+        self.assertEqual(peers, [(128, "Chrome (input)", None), (129, "Chrome (output)", None)])
+        self.assertTrue(all(device.web_midi_browser(name, program) for _c, name, program in peers))
+        self.assertEqual(device.seq_client_names("/nonexistent/clients"), {})
         # a browser, by its client's name or its program's, refuses a send; a bridge only passes messages on
         for name, program in (("Chrome", "chrome"), ("Chromium", None), ("Midi Through", "chromium"),
                               ("Firefox", "firefox-bin"), ("RtMidi Output Client", "firefox"),
@@ -838,12 +859,18 @@ class WithFakeKitSlot(unittest.TestCase):
         except Exception as e:          # no virtual MIDI here (a CI machine without a sound system)
             raise unittest.SkipTest(f"no virtual MIDI ports: {e}")
         os.environ["MINICTL_PORT"] = "fakekit"
+        # only this test's own clients count on the fake's port: a browser with Web MIDI open on this
+        # machine (minicontrol in Chrome) joins every new port, the fake's too, and would refuse every send
+        cls.others = device.Minichord.others_on_port
+        ours = lambda peers: None if peers is None else [(n, p) for n, p in peers if (p or "").startswith("python")]
+        device.Minichord.others_on_port = lambda d: ours(cls.others(d))
         cls.cache = tempfile.TemporaryDirectory()
         os.environ["XDG_CACHE_HOME"] = cls.cache.name
         cls.synthetic = kit.Kit.load(SYNTHETIC)
 
     @classmethod
     def tearDownClass(cls):
+        device.Minichord.others_on_port = cls.others
         FAKES.remove(cls.fake)
         cls.fake.close()
         os.environ.pop("MINICTL_PORT", None)

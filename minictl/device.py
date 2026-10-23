@@ -587,7 +587,7 @@ class Minichord:
         except (OSError, subprocess.TimeoutExpired):
             return None
         out = []
-        for _c, name, pid in alsa_peers(listing, self.alsa_clients, os.getpid()):
+        for _c, name, pid in alsa_peers(listing, self.alsa_clients, os.getpid(), seq_client_names()):
             program = None
             if pid:
                 try:
@@ -619,10 +619,23 @@ def kit_status(status):
     return U.STATUSES[status] if status < len(U.STATUSES) else f"status {status}"
 
 
-def alsa_peers(listing, clients, me=None):
+def seq_client_names(path="/proc/asound/seq/clients"):
+    """every ALSA sequencer client's name, from the kernel's own list. `aconnect -l` leaves out a client
+    whose ports can't be subscribed to, and that is how Chrome's Web MIDI shows ("Chrome (input)" and
+    "Chrome (output)", connected to every port), so without this a browser on the port has no name."""
+    try:
+        with open(path) as f:
+            text = f.read()
+    except OSError:
+        return {}
+    return {int(c): n for c, n in re.findall(r'^Client\s+(\d+) : "(.*)"', text, re.M)}
+
+
+def alsa_peers(listing, clients, me=None, known=None):
     """Who else is connected to the ALSA sequencer clients given (the minichord's), from `aconnect -l`'s
     listing: [(client, its name, its process or None)], leaving out process me's own clients (minictl's,
-    and a pretend minichord's in the same process)."""
+    and a pretend minichord's in the same process). A client the listing doesn't show takes its name from
+    known (seq_client_names), else "?"."""
     names, pids, peers, client = {}, {}, set(), None
     for line in listing.splitlines():
         m = re.match(r"client (\d+): '(.*)' \[(.*)\]", line)
@@ -635,7 +648,8 @@ def alsa_peers(listing, clients, me=None):
         m = re.match(r"\s+(?:Connecting To|Connected From): (.*)", line)
         if m and client in clients:
             peers |= {int(c) for c, _p in re.findall(r"(\d+):(\d+)", m.group(1))}
-    return [(c, names.get(c, "?"), pids.get(c)) for c in sorted(peers - set(clients))
+    known = known or {}
+    return [(c, names.get(c) or known.get(c, "?"), pids.get(c)) for c in sorted(peers - set(clients))
             if me is None or pids.get(c) != me]
 
 
