@@ -574,6 +574,8 @@
   "2": "Piano plate",
   "3": "Twin rows",
   "4": "Framed strings",
+  "8": "Zipper 24",
+  "9": "Arcade wheel",
   "13": "Drum pads"
  },
  "244": {
@@ -970,7 +972,8 @@
   "9": "trap",
   "10": "house",
   "11": "glitch",
-  "12": "cliqhop"
+  "12": "cliqhop",
+  "13": "your own"
  },
  "340": {
   "0": "Off",
