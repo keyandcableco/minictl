@@ -1,7 +1,7 @@
 """minictl: the minichord from the command line. `minictl help` lists the commands."""
 import argparse, datetime, json, os, re, sys, time
 
-from . import device as dev
+from . import device as dev, kit
 from .settings import (Settings, BANKS, RHYTHM_FIRST, RHYTHM_LAST, pm, interpret, profile_for, FIRMWARE,
                        STOCK_VERSION, STOCK_UNWRITABLE)
 
@@ -57,12 +57,46 @@ def banks_arg(text):
     return sorted(set(out))
 
 
-def open_device(args):
-    """the minichord, open and read once, so which firmware it runs is known"""
+def wait_for_other_upload(d):
+    """another program sending the minichord a kit (INFO's state 2, or its replies heard): waited out, and
+    INFO's reply after (said on stderr, so --json's output stays JSON)"""
+    print("another program is sending the minichord a kit (an upload is open): waiting for it to end",
+          file=sys.stderr, flush=True)
+    d.kit_wait_others()
+    info = d.kit_info()
+    if info is None or info["state"] == 2:
+        raise RuntimeError("another program's kit upload is still open on the minichord: try again once it ends")
+    return info
+
+
+def upload_waited_out(d):
+    """A minichord taking another program's kit (fork firmware 113) answers nothing but the kit's messages
+    until that ends, so when it doesn't answer for its settings INFO is asked, and an upload open waited
+    out. Whether to ask for the settings again: not when INFO goes unanswered too (no kit slot there)."""
+    info = d.kit_info()
+    if info is None:
+        return False
+    if info["state"] == 2:
+        wait_for_other_upload(d)
+    return True
+
+
+def open_device(args, unanswered=upload_waited_out):
+    """the minichord, open and read once, so which firmware it runs is known; unanswered(d), when it
+    doesn't answer, says whether to ask again (by default: once another program's kit upload has been
+    waited out)"""
     global PROFILE
     d = dev.Minichord(args.port)
+    # another program's upload heard later, in the middle of the command: what minictl sends waits it out
+    d.on_others_wait = lambda: print("another program is sending the minichord a kit: waiting for it to end, "
+                                     "then going on", file=sys.stderr, flush=True)
     try:
-        d.read()
+        try:
+            d.read()
+        except RuntimeError:
+            if not unanswered or not unanswered(d):
+                raise
+            d.read()
     except Exception:
         d.close()
         raise
@@ -372,30 +406,49 @@ def cmd_restore(args):
         if not confirm(f"Write these {len(entries)} banks, replacing what each holds?", args):
             return
         start = live[1]
+
+        def write(e):
+            values = list(e["values"])
+            # Sound Lab test firmware kept the master tuning at 255, not 109
+            if len(values) > 255 and not values[109] and values[255] and 4320 <= values[255] <= 4460:
+                values[109] = values[255]
+            # a backup from before names were kept in the bank brings its name along
+            if live[7] >= 50 and e.get("name") and len(values) > 301 and not s.preset_name(values):
+                s.set_preset_name(values, e["name"])
+            if s.stock:     # a backup from the fork's firmware: what stock keeps, within its ranges
+                values = s.clamp(values)
+            d.load_bank(e["bank"])
+            time.sleep(0.15)
+            d.apply(values, page1_defaults())
+            time.sleep(0.04)
+            d.save(e["bank"])
+            print(f"bank {e['bank'] + 1} written", flush=True)
+
+        def differs(e):
+            got = d.load_bank(e["bank"])
+            want = s.clamp(e["values"]) if s.stock else e["values"]
+            return [a for a, v in enumerate(want) if a not in (0, 1, 7) and a not in dev.RESERVED and not s.writable(a)
+                    and not d.leaves_alone(a) and v is not None and a < len(got) and got[a] != v
+                    and not (a == 109 and not v) and not (290 <= a < 302 and not v)]
+
         try:
-            for e in entries:
-                values = list(e["values"])
-                # Sound Lab test firmware kept the master tuning at 255, not 109
-                if len(values) > 255 and not values[109] and values[255] and 4320 <= values[255] <= 4460:
-                    values[109] = values[255]
-                # a backup from before names were kept in the bank brings its name along
-                if live[7] >= 50 and e.get("name") and len(values) > 301 and not s.preset_name(values):
-                    s.set_preset_name(values, e["name"])
-                if s.stock:     # a backup from the fork's firmware: what stock keeps, within its ranges
-                    values = s.clamp(values)
-                d.load_bank(e["bank"])
-                time.sleep(0.15)
-                d.apply(values, page1_defaults())
-                time.sleep(0.04)
-                d.save(e["bank"])
-                print(f"bank {e['bank'] + 1} written", flush=True)
+            # Another program's kit upload heard meanwhile was waited out, but what reached the minichord in
+            # the moment before it was heard was dropped: the banks that then differ go again
+            todo, diffs = entries, {}
+            for _round in range(3):
+                seen = d.kit_others_seen
+                for e in todo:
+                    write(e)
+                diffs.update((e["bank"], differs(e)) for e in todo)
+                todo = [e for e in todo if diffs[e["bank"]]]
+                if not todo or d.kit_others_seen == seen:
+                    break
+                print(f"another program sent the minichord a kit while the banks were written, and the minichord "
+                      f"dropped some of what was sent: writing {'bank' if len(todo) == 1 else 'banks'} "
+                      f"{', '.join(str(e['bank'] + 1) for e in todo)} again", flush=True)
             bad = 0
             for e in entries:
-                got = d.load_bank(e["bank"])
-                want = s.clamp(e["values"]) if s.stock else e["values"]
-                diff = [a for a, v in enumerate(want) if a not in (0, 1, 7) and a not in dev.RESERVED and not s.writable(a)
-                        and not d.leaves_alone(a) and v is not None and a < len(got) and got[a] != v
-                        and not (a == 109 and not v) and not (290 <= a < 302 and not v)]
+                diff = diffs[e["bank"]]
                 if diff:
                     bad += 1
                     print(f"bank {e['bank'] + 1}: {len(diff)} settings differ from the file, first "
@@ -755,6 +808,194 @@ def cmd_locks(args):
         print(f"  {a:3}  {s.title(a)}" + ("  (always)" if a in dev.INSTRUMENT else ""))
 
 
+# ---- your own drum kit ---------------------------------------------------------------------------
+
+def kit_names():
+    """drum kit 337's choices by number, as minicontrol names them"""
+    return dict(settings().options.get(kit.KIT_SETTING, {}))
+
+
+def open_kit(args, what):
+    """the minichord, open, and its kit slot's INFO: fork firmware 113 that answers it, with another
+    program's upload waited out (open_device's, when the settings go unanswered, and here)"""
+    d = open_device(args)
+    try:
+        needs_fork(what, d, kit.KIT_VERSION)
+        info = d.kit_info()
+        if info is None:
+            raise RuntimeError(f"this firmware has no kit slot: the minichord didn't answer the kit's INFO "
+                               f"(firmware {d.version}; {what} needs the fork's firmware {kit.KIT_VERSION} or later)")
+        if info["state"] == 2 or d.kit_others():
+            info = wait_for_other_upload(d)
+    except Exception:
+        d.close()
+        raise
+    return d, info
+
+
+def kit_fallback():
+    """what drum kit 13 plays with no kit stored"""
+    n = kit.STAND_IN_KIT
+    name = kit_names().get(n)
+    return f"the {name} kit (drum kit {n})" if name else f"drum kit {n}"
+
+
+def kit_state_lines(info, last=None):
+    """INFO in words"""
+    names = kit_names()
+    state, reason = info["state"], info["reason"]
+    room = f"{kit.kb(info['capacity'])} of room, the sound from 0x{info['data_base']:08X}"
+    if state == 1:
+        filled = kit.voice_names(info["filled"])
+        base = names.get(info["base_kit"])
+        lines = [f"your own drum kit: {info['name'] or '(no name)'}, {len(filled)} of 13 voices, "
+                 f"{kit.kb(info['size'] - 256)} of sound, the rest from kit {info['base_kit']}" + (f" ({base})" if base else ""),
+                 "  " + (", ".join(filled) or "(no voices of its own)"),
+                 f"  {info['size']} bytes, CRC {info['crc']:08X}; {room}"]
+        if last and last.info["crc"] == info["crc"] and len(last.image) == info["size"]:
+            lines.append("  (the last kit sent from this computer)")
+        return lines
+    if state == 0:
+        lines = [f"no kit stored: drum kit 13 plays {kit_fallback()} until one is sent", f"  {room}"]
+    elif state == 3:
+        lines = [f"the stored kit is damaged, reason {reason}: {kit.U.REASONS[reason] if reason < len(kit.U.REASONS) else '?'}"
+                 + (". A bigger firmware moved where the sound starts" if reason == kit.U.REASON_DATA_BASE else ""),
+                 f"  drum kit 13 plays {kit_fallback()} until a kit is sent again", f"  {room}"]
+    elif state == 4:
+        lines = ["the kit slot is disabled: this firmware leaves less than 64 kB of flash for it"]
+    else:
+        lines = [f"the kit slot is {kit.U.STATES[state] if state < len(kit.U.STATES) else state}"]
+    if last and state in (0, 3):
+        lines.append(f"  the last kit sent from this computer: {last.name or '(no name)'} "
+                     f"(`minictl kit send {kit.cache_path()}`)")
+    return lines
+
+
+def cmd_kit(args):
+    args.kit_parser.print_help()
+
+
+def cmd_kit_info(args):
+    d, info = open_kit(args, "your own drum kit")
+    d.close()
+    if args.json:
+        return print_json(dict(info, state_name=kit.U.STATES[info["state"]] if info["state"] < len(kit.U.STATES) else None,
+                               reason_text=kit.U.REASONS[info["reason"]] if info["reason"] < len(kit.U.REASONS) else None,
+                               voices=kit.voice_names(info["filled"])))
+    for line in kit_state_lines(info, kit.last()):
+        print(line)
+
+
+def kit_upload(d, k):
+    """the upload, with its progress on a terminal; if BEGIN finds the rhythm or the looper running, both
+    are stopped, that said, and BEGIN sent once more (user_kit.md section 5)"""
+    show = sys.stderr.isatty()
+
+    def progress(done, size):
+        if show:
+            print(f"\rsending: {100 * done // size:3d}%", end="", file=sys.stderr, flush=True)
+
+    try:
+        try:
+            return d.kit_upload(k.image, progress)
+        except dev.KitBusy:
+            pass
+        print("! the minichord is busy: its rhythm or its looper is running, and it can't write a kit while "
+              "either plays")
+        d.command(8, 0)
+        d.set(dev.LOOPER_ADDRESS, 3)
+        time.sleep(0.3)
+        print("rhythm and looper stopped, to send the kit")
+        try:
+            return d.kit_upload(k.image, progress)
+        except dev.KitBusy:
+            raise RuntimeError("the minichord is still busy: another program may be sending it a kit")
+    finally:
+        if show:
+            print("\r" + " " * 16 + "\r", end="", file=sys.stderr, flush=True)
+
+
+def port_check(d, force):
+    """Linux: who else has the minichord's MIDI port. A browser (minicontrol's tab, maybe) stops the send
+    unless forced; anything else (PipeWire's or JACK's bridge, Midi Through) is only noted."""
+    others = d.others_on_port()
+    if others is None:
+        print("! couldn't tell whether a browser has the minichord's MIDI port (aconnect -l didn't run)")
+        return
+
+    def named(peers):
+        return ", ".join(dict.fromkeys(name + (f" ({program})" if program and program != name else "")
+                                       for name, program in peers))
+    browsers = [p for p in others if dev.web_midi_browser(*p)]
+    rest = [p for p in others if p not in browsers]
+    if rest:
+        print(f"(also connected to the minichord's MIDI port: {named(rest)}; what they send it is dropped while "
+              f"the kit is written)")
+    if browsers:
+        print(f"! a browser is connected to the minichord's MIDI port: {named(browsers)}")
+        print("  close minicontrol's tab: its messages are dropped while the kit is written, and unplugging with "
+              "Web MIDI open can hang USB on some Linux kernels")
+        if not force:
+            raise RuntimeError("not sending while a browser has the minichord's port (--force sends anyway)")
+
+
+def cmd_kit_send(args):
+    k = kit.Kit.load(args.file)
+    problem = k.problem()
+    if problem:                        # checked before anything goes to the minichord
+        raise RuntimeError(f"{args.file}: {problem}. Nothing was sent")
+    names = kit_names()
+    for line in k.describe(names):
+        print(line)
+    d, info = open_kit(args, "your own drum kit")
+    with d:
+        port_check(d, args.force)
+        if info["state"] == 4:
+            raise RuntimeError("the minichord's kit slot is disabled: its firmware leaves less than 64 kB of flash for one")
+        if k.sound > info["capacity"]:
+            raise RuntimeError(f"{args.file} has {kit.kb(k.sound)} of sound, and this minichord has room for "
+                               f"{kit.kb(info['capacity'])}: nothing was sent")
+        if info["state"] == 1 and info["crc"] == k.info["crc"] and info["size"] == len(k.image):
+            print("(the minichord holds this kit already; it goes again)")
+        if not confirm("Send it? The minichord goes quiet while the kit is written, usually under 20 seconds; "
+                       "don't unplug it.", args):
+            return
+        t0 = time.monotonic()
+        info = kit_upload(d, k)
+        print(f"sent in {time.monotonic() - t0:.1f} s")
+        path = kit.remember(k)
+        if info:
+            for line in kit_state_lines(info):
+                print(line)
+        if path:
+            print(f"(kept as the last kit sent: {path})")
+        if args.select:
+            v = d.read()
+            d.set(kit.KIT_SETTING, kit.OWN_KIT)
+            print("drum kit 13, your own, playing (live: `minictl save` keeps it)")
+            if not v[kit.DRUMS] and not v[kit.HARP_DRUMS]:
+                print(f"  ! the drums and harp drums are both off in this preset, so it plays nothing yet: "
+                      f"`minictl set {settings().names[kit.DRUMS]} on`")
+
+
+def cmd_kit_clear(args):
+    d, info = open_kit(args, "clearing your own drum kit")
+    with d:
+        if info["state"] == 0:
+            print("no kit stored: nothing to clear")
+            return
+        if info["state"] == 4:
+            print("the kit slot is disabled (this firmware leaves less than 64 kB of flash for it): nothing to clear")
+            return
+        what = f"the kit {info['name']!r}" if info["state"] == 1 and info["name"] else "the stored kit"
+        if not confirm(f"Erase {what} from the minichord? Drum kit 13 then plays {kit_fallback()} until another "
+                       f"is sent.", args):
+            return
+        info = d.kit_clear()
+        for line in kit_state_lines(info):
+            print(line)
+
+
 def cmd_monitor(args):
     show_midi = args.midi or not args.serial
     show_serial = args.serial or not args.midi
@@ -833,7 +1074,8 @@ def parser():
     def common(p, default):
         kw = {} if default else {"default": argparse.SUPPRESS}
         p.add_argument("--port", help="the minichord's MIDI port, by a piece of its name (or MINICTL_PORT)", **kw)
-        p.add_argument("-y", "--yes", action="store_true", help="don't ask before saving, restoring or flashing", **kw)
+        p.add_argument("-y", "--yes", action="store_true", help="don't ask before saving, restoring, flashing or "
+                                                                "writing a kit", **kw)
         p.add_argument("--json", action="store_true", help="JSON output, for scripts", **kw)
 
     ap = argparse.ArgumentParser(prog="minictl", description="The minichord from the command line.")
@@ -927,6 +1169,21 @@ def parser():
     p.add_argument("--unlock", action="append", default=[], metavar="SETTING", help="unlock a setting, so presets set it again")
     p.add_argument("--defaults", action="store_true", help="lock the default ones again (the harp plate, the touch thresholds, the master tuning), nothing else")
     p.add_argument("--none", action="store_true", help="unlock everything")
+    p = add("kit", cmd_kit, "your own drum kit, drum kit 13 (fork firmware 113): kit info, kit send FILE.mckit, kit clear")
+    p.set_defaults(kit_parser=p)
+    kits = p.add_subparsers(dest="kit_command", metavar="info|send|clear")
+
+    def add_kit(name, fn, help):
+        q = kits.add_parser(name, help=help, description=help, parents=[shared])
+        q.set_defaults(fn=fn)
+        return q
+
+    add_kit("info", cmd_kit_info, "what the minichord's kit slot holds")
+    q = add_kit("send", cmd_kit_send, "send a kit (a .mckit, from minicontrol) into the minichord's flash (asks)")
+    q.add_argument("file", help="the .mckit (or a bare image), checked before anything is sent")
+    q.add_argument("--select", action="store_true", help="then play it: drum kit 13, live")
+    q.add_argument("--force", action="store_true", help="send even while a browser has the minichord's port open")
+    add_kit("clear", cmd_kit_clear, "erase the kit from the minichord's flash (asks)")
     p = add("monitor", cmd_monitor, "print what the minichord sends: MIDI and its serial log")
     p.add_argument("--midi", action="store_true", help="MIDI only")
     p.add_argument("--serial", action="store_true", help="serial only")

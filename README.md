@@ -1,6 +1,6 @@
 # minictl
 
-The [minichord](https://github.com/BenjaminPoilve/minichord) from the command line: read and change its settings by name, walk and back up its banks, turn words into a preset, tell it what to do in plain sentences, play notes into it, watch what it sends, record it and flash it. It speaks the same SysEx as [minicontrol](https://minicontrol.keyandcable.com), reads instructions with the same grammar, and describes presets with the same rules, so the page and the command line agree about every setting.
+The [minichord](https://github.com/BenjaminPoilve/minichord) from the command line: read and change its settings by name, walk and back up its banks, turn words into a preset, tell it what to do in plain sentences, send it a drum kit of your own, play notes into it, watch what it sends, record it and flash it. It speaks the same SysEx as [minicontrol](https://minicontrol.keyandcable.com), reads instructions with the same grammar, and describes presets with the same rules, so the page and the command line agree about every setting.
 
 ```
 pip install "minichord[all] @ git+https://github.com/keyandcableco/minictl"
@@ -52,11 +52,14 @@ Flashing from stock firmware to the fork's, or back, formats the preset storage,
 | `rhythm on/off/toggle` | rhythm mode (fork) |
 | `snapshot`, `revert` | remember the live settings, and go back to them (fork) |
 | `locks` | the settings the minichord keeps as its own, whatever preset is loaded: `--lock master-tuning`, `--unlock`, `--defaults`, `--none` (fork firmware 76). `restore`, `code` and `do` leave locked settings alone |
+| `kit info` | what the minichord's drum kit slot holds: your own drum kit, drum kit 13 (fork firmware 113) |
+| `kit send FILE.mckit` | send a kit made in minicontrol into the minichord's flash (below); `--select` then plays it (drum kit 13, live), `--force` sends with a browser on the port |
+| `kit clear` | erase the kit from the minichord's flash; drum kit 13 plays the studio kit (drum kit 4) until another is sent |
 | `monitor` | what the minichord sends: its MIDI and its serial log (`--midi`, `--serial`) |
 | `record file.wav` | its USB audio (`-s` seconds) |
 | `flash file.hex` | put a firmware on it, through PJRC's loader |
 
-`--json` gives scripts JSON from `info`, `list`, `get`, `banks` and `describe`.
+`--json` gives scripts JSON from `info`, `list`, `get`, `banks`, `describe` and `kit info`.
 
 ### Settings by name
 
@@ -81,9 +84,22 @@ An instruction is for the live sound unless it names banks: "on banks 2 and 4", 
 
 Reading or writing a bank loads it, which drops what is live and unsaved, so afterwards minictl puts the live sound back as it was, with the changes on top.
 
+### Your own drum kit
+
+Drum kit 13 (`drum-kit 13`, fork firmware 113) plays up to thirteen one-shots of your own in place of the drum machine's voices, any you leave out taken from one of the other twelve kits. minicontrol makes the kit from your sound files and saves it as a `.mckit`; `minictl kit send kit.mckit` puts it in the minichord's flash, between the firmware and the presets, where it stays through power cycles and preset changes. There is room for 256 kB of sound at most, less when the firmware is bigger; `kit info` says how much. Until a kit is sent, drum kit 13 plays the studio kit (drum kit 4).
+
+```
+minictl kit send tabla.mckit --select
+minictl kit info
+```
+
+The file is checked before anything is sent, by the same checks the firmware and minicontrol use (the fork's `generator/user_kit.md` is the contract, and `minictl/user_kit.py` its reference, as the fork has it). While the kit is written the minichord goes quiet and answers nothing else, usually for under 20 seconds: don't unplug it. If its rhythm or looper is running it can't take a kit, so minictl stops them, says so, and sends again. On Linux minictl won't send while a browser (minicontrol in Chrome, say: Chrome, Chromium, Edge, Opera, Brave, Vivaldi or Firefox, told by its program's name or its MIDI client's) has the minichord's port open (`--force` sends anyway): close minicontrol's tab first, as its messages are dropped while the kit is written, and unplugging with Web MIDI open can hang USB on some Linux kernels. Other programs on the port, such as PipeWire's MIDI bridge, are only named. While another program sends the minichord a kit, minictl's commands wait for it to end, as the minichord answers nothing else meanwhile: one going when a command starts, and one heard beginning in the middle of it, when what minictl sends waits and a report it was waiting for (a bank walk's) is asked for again. The minichord also drops what reaches it in the moment before that upload is heard, so `restore` writes again any bank that then differs from the file; the other commands that send settings (`set`, `code`, `do` and the like) don't check, so run one again if another program sent a kit while it ran.
+
+A firmware that grows past where the kit's sound starts leaves the kit unplayable (`kit info` says so). minictl keeps the last kit it sent in `~/.cache/minictl/last-kit.mckit`, so `minictl kit send ~/.cache/minictl/last-kit.mckit` puts it back.
+
 ### What it asks first
 
-`set`, `code`, `describe --send`, `do` on the live sound, `bank` and `play` change only what's playing; the bank stays as stored until it's saved. `save`, `reset`, `restore`, `set --save`, `do` on banks and `flash` write to the instrument's memory, so they ask first, or take `--yes`. Run from a script with no one to ask, they stop rather than go ahead.
+`set`, `code`, `describe --send`, `do` on the live sound, `bank` and `play` change only what's playing; the bank stays as stored until it's saved. `save`, `reset`, `restore`, `set --save`, `do` on banks, `kit send`, `kit clear` and `flash` write to the instrument's memory, so they ask first, or take `--yes`. Run from a script with no one to ask, they stop rather than go ahead.
 
 Walking the banks (`banks`, `backup`, `restore`, `get -b`) loads each one in turn and comes back to the bank it started on. Loading a bank drops live changes that weren't saved.
 
@@ -103,13 +119,21 @@ python tests/test_minictl.py
 
 The tests check the names, values and codes, then run every device command against a pretend minichord on virtual MIDI ports (`tests/fake_minichord.py`), so they never touch a real one. Virtual ports exist on Linux and macOS; on Windows only the offline half runs. To try minictl without the instrument, run `python tests/fake_minichord.py` in one terminal and `minictl --port fakechord ...` in another.
 
+The pretend minichord has the kit slot too, on a pretend flash that erases and programs as the real one does, and the kit tests send it the fork's test vectors (`tests/kits`: a synthetic kit, every message of its upload, and the broken images with the reason each must fail), lose a reply on the way, find it busy, and so on. Chrome sees its virtual ports as it sees the instrument's, so minicontrol's kit page can send it a kit; minicontrol looks for "minichord" in the port's name:
+
+```
+python tests/fake_minichord.py --name "minichord fake"
+```
+
+It prints what its kit slot does. `--room 128` gives it less room, `--kit file.mckit` a kit to start with, `--rhythm` a rhythm running, and `--lose-every 20` loses every twentieth piece's reply, so the sender must send it again.
+
 The device tests run twice, against a pretend fork minichord and a pretend stock one (`python tests/fake_minichord.py stock`).
 
 `tests/parity_test.py ~/minicontrol` runs the same instructions (`tests/commands_cases.json`: minicontrol's own tests and suggestions, and more) through `commands.py` and minicontrol's `commands.js`, and every one must change the same values and say the same things. It needs node. Run it after either side changes; a difference is a bug in one of them.
 
 ## Where its data comes from
 
-minictl carries what it knows, so it needs no firmware checkout: each firmware's `parameters.json` and shared presets (`minictl/data/stock`, `minictl/data/fork`), the names minicontrol's dropdowns give each choice (`minictl/data/options.json`), and the describer (`minictl/describer`), which is written in the fork. `sync.py` refreshes them all from a fork checkout, stock's branch in it, and minicontrol:
+minictl carries what it knows, so it needs no firmware checkout: each firmware's `parameters.json` and shared presets (`minictl/data/stock`, `minictl/data/fork`), the names minicontrol's dropdowns give each choice (`minictl/data/options.json`), the describer (`minictl/describer`), which is written in the fork, and the user drum kit's reference (`minictl/user_kit.py`, the fork's `generator/user_kit.py`) with its test vectors (`tests/kits`). `sync.py` refreshes them all from a fork checkout, stock's branch in it, and minicontrol:
 
 ```
 python sync.py --fork ~/minichord --stock upstream/main --minicontrol ~/minicontrol

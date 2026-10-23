@@ -8,17 +8,24 @@ From the minichord fork's checkout:
                        they are (the describer is written there; edit it there, then sync)
   minictl/data/fork/   parameters.json, shared_presets.json and parameter_lookup.h (which settings
                        a knob sweeps whole), and the firmware version from src/main.cpp
+  minictl/user_kit.py  generator/user_kit.py as it is: the user drum kit's reference (its image, checks,
+                       messages and .mckit file, as generator/user_kit.md says them), which kit.py builds
+                       on; edit it there, then sync
+  tests/kits/          the kit's test vectors from firmware/test/kits, the ones the tests use:
+                       synthetic.mckit, synthetic.frames, small.image and broken/ with expected.json
 From Ben's stock firmware, a ref in the same checkout (git fetch upstream first):
   minictl/data/stock/  parameters.json, shared_presets.json and the version
 From minicontrol:
   minictl/data/options.json, the names its dropdowns give each setting's values
 
-Then run the tests (tests/test_minictl.py, tests/parity_test.py) and commit what changed.
+Then run the tests (tests/test_minictl.py, tests/parity_test.py) and commit what changed (minictl/ and
+tests/kits/).
 """
 import argparse, json, os, re, shutil, subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PKG = os.path.join(HERE, "minictl")
+KIT_VECTORS = ("synthetic.mckit", "synthetic.frames", "small.image")
 
 
 def git(repo, *args):
@@ -36,6 +43,26 @@ def write(path, text):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         f.write(text)
+
+
+def sync_kit(fw):
+    """The user drum kit's reference and its test vectors, from a fork that has them (firmware 113 on);
+    from an older one, what minictl carries is left as it is. A broken image the fork no longer has goes."""
+    ref = os.path.join(fw, "generator", "user_kit.py")
+    if not os.path.exists(ref):
+        print("the fork has no generator/user_kit.py: the kit's reference and vectors left as they are")
+        return
+    shutil.copy(ref, os.path.join(PKG, "user_kit.py"))
+    theirs, ours = os.path.join(fw, "test", "kits"), os.path.join(HERE, "tests", "kits")
+    os.makedirs(os.path.join(ours, "broken"), exist_ok=True)
+    for name in KIT_VECTORS:
+        shutil.copy(os.path.join(theirs, name), os.path.join(ours, name))
+    broken = {n for n in os.listdir(os.path.join(theirs, "broken")) if n.endswith(".image") or n == "expected.json"}
+    for name in os.listdir(os.path.join(ours, "broken")):
+        if name not in broken:
+            os.remove(os.path.join(ours, "broken", name))
+    for name in broken:
+        shutil.copy(os.path.join(theirs, "broken", name), os.path.join(ours, "broken", name))
 
 
 def main():
@@ -56,6 +83,7 @@ def main():
                 os.path.join(PKG, "data", "fork", "parameter_lookup.h"))
     with open(os.path.join(fw, "src", "main.cpp")) as f:
         fork_version = version_of(f.read())
+    sync_kit(fw)
 
     write(os.path.join(PKG, "data", "stock", "parameters.json"),
           git(fork, "show", f"{args.stock}:firmware/generator/parameters.json"))

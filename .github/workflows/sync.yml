@@ -1,8 +1,9 @@
 name: sync
 
-# Keeps what minictl carries from elsewhere (see sync.py) up to date by itself: the describer and the
-# fork's settings from keyandcableco/minichord's advanced branch, the stock firmware's from Ben's main,
-# and the dropdown names from minicontrol. Every three hours, on the button in the Actions tab, and at
+# Keeps what minictl carries from elsewhere (see sync.py) up to date by itself: the describer, the
+# fork's settings and the user drum kit's reference and test vectors (tests/kits) from
+# keyandcableco/minichord's advanced branch, the stock firmware's from Ben's main, and the dropdown
+# names from minicontrol. Every three hours, on the button in the Actions tab, and at
 # once when the fork's push workflow (minictl-sync.yml there) sends a "firmware-changed" dispatch.
 # What changed is committed only if the tests and the parity check with minicontrol pass; otherwise an
 # issue says what failed and nothing is committed, so minictl never ships a describer that breaks.
@@ -52,8 +53,8 @@ jobs:
           # never back to an older firmware: a sync by hand from a newer branch stays
           was=$(git show HEAD:minictl/data/firmware.json | python -c "import json,sys; print(json.load(sys.stdin)['fork']['version'])")
           now=$(python -c "import json; print(json.load(open('minictl/data/firmware.json'))['fork']['version'])")
-          if [ "$now" -lt "$was" ]; then echo "the branch synced from has firmware $now, minictl already carries $was: nothing done"; git checkout -- minictl; exit 0; fi
-          if [ -n "$(git status --porcelain -- minictl)" ]; then echo "changed=yes" >> "$GITHUB_OUTPUT"; git status --short -- minictl; else echo "nothing new"; fi
+          if [ "$now" -lt "$was" ]; then echo "the branch synced from has firmware $now, minictl already carries $was: nothing done"; git checkout -- minictl tests/kits; git clean -fdq -- minictl tests/kits; exit 0; fi
+          if [ -n "$(git status --porcelain -- minictl tests/kits)" ]; then echo "changed=yes" >> "$GITHUB_OUTPUT"; git status --short -- minictl tests/kits; else echo "nothing new"; fi
       - name: tests
         id: tests
         if: steps.changed.outputs.changed == 'yes'
@@ -68,7 +69,7 @@ jobs:
           read -r fork_version fork_commit < <(python -c "import json; d = json.load(open('minictl/data/firmware.json'))['fork']; print(d['version'], d['commit'])")
           git config user.name "minictl sync"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add minictl
+          git add minictl tests/kits
           git commit -m "Synced from the fork at ${fork_commit} (firmware ${fork_version})" \
                      -m "By the sync workflow: sync.py, then the tests and the parity check with minicontrol, all passed."
           git push
