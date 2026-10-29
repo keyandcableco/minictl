@@ -574,6 +574,7 @@
   "2": "Piano plate",
   "3": "Twin rows",
   "4": "Framed strings",
+  "5": "Bent board: a harp of thirteen places, the bend rail, palm pad and thumb ribbon",
   "8": "Zipper 24",
   "9": "Arcade wheel",
   "12": "Piano glide",
@@ -1062,5 +1063,23 @@
   "1": "Climbs the drops, then starts over",
   "2": "Climbs the drops and comes back down",
   "3": "Close and drop 2 in turn"
+ },
+ "435": {
+  "0": "Bits and sample rate",
+  "1": "Bits only",
+  "2": "Sample rate only"
+ },
+ "437": {
+  "0": "Slower",
+  "1": "Faster"
+ },
+ "441": {
+  "0": "The drums play on through it",
+  "1": "The drums stutter too"
+ },
+ "443": {
+  "0": "None",
+  "1": "Pitch drop, clock bend and stutter",
+  "2": "Every bend"
  }
 }
