@@ -575,10 +575,13 @@
   "3": "Twin rows",
   "4": "Framed strings",
   "5": "Bent board: a harp of thirteen places, the bend rail, palm pad and thumb ribbon",
+  "6": "Tesseract: all 24 major and minor chords, one at each corner",
+  "7": "Torus: the Tonnetz, a chord at each corner",
   "8": "Zipper 24",
   "9": "Arcade wheel",
   "12": "Piano glide",
-  "13": "Drum pads"
+  "13": "Drum pads",
+  "14": "Celtic knot: the circle of fifths, a chord at each crossing"
  },
  "244": {
   "0": "Stock: offered as a speaker, not played",
